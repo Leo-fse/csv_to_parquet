@@ -1,6 +1,12 @@
+import logging
 from pathlib import Path
 
 import duckdb
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 def output_parquet(arrow_data, output_dir: str):
@@ -18,9 +24,9 @@ def output_parquet(arrow_data, output_dir: str):
             (FORMAT 'parquet', PARTITION_BY ('year', 'month'), OVERWRITE)
         """
         duckdb.sql(sql)
-        print(f"Output written to: {output_dir}")
+        logger.info(f"Output written to: {output_dir}")
     except Exception as e:
-        print(e)
+        logger.error(e)
 
 
 def merge_with_existing_data(new_data, output_dir: str):
@@ -52,10 +58,10 @@ def merge_with_existing_data(new_data, output_dir: str):
                 WHERE rn = 1
             """
             merged_data = duckdb.sql(merge_query).to_arrow_table()
-            print("既存データと新規データのマージが完了しました。")
+            logger.info("既存データと新規データのマージが完了しました。")
             return merged_data
     except Exception as e:
-        print(e)
+        logger.error(e)
     else:
-        print("既存データが見つからなかったため、新規データのみを使用します。")
+        logger.info("既存データが見つからなかったため、新規データのみを使用します。")
         return new_data

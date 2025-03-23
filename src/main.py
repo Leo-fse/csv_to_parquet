@@ -2,27 +2,27 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import logging
 from pathlib import Path
 
 from libs.process_csv import get_new_data
 from libs.process_parquet import merge_with_existing_data, output_parquet
 from libs.settings import INPUT_DIR, OUTPUT_DIR
 
+# 設定
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 def process_data(input_dir: Path, output_dir: str, use_streaming: bool = True):
     # 新規データの取得
-    print("処理開始：CSVファイル")
     new_data = get_new_data(input_dir, use_streaming)
-    print("処理終了：CSVファイル")
-
-    print("処理開始：既存データとのマージ")
+    # 処理開始：既存データとのマージ"
     merged_data = merge_with_existing_data(new_data, output_dir)
-    print("処理終了：既存データとのマージ")
-
     # Parquet出力
-    print("処理開始：Parquet出力")
     output_parquet(merged_data, output_dir)
-    print("処理終了：Parquet出力")
 
 
 def main():
