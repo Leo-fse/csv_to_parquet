@@ -11,11 +11,18 @@ from libs.settings import INPUT_DIR, OUTPUT_DIR
 
 def process_data(input_dir: Path, output_dir: str, use_streaming: bool = True):
     # 新規データの取得
+    print("処理開始：CSVファイル")
     new_data = get_new_data(input_dir, use_streaming)
-    # 既存データとのマージ
+    print("処理終了：CSVファイル")
+
+    print("処理開始：既存データとのマージ")
     merged_data = merge_with_existing_data(new_data, output_dir)
+    print("処理終了：既存データとのマージ")
+
     # Parquet出力
+    print("処理開始：Parquet出力")
     output_parquet(merged_data, output_dir)
+    print("処理終了：Parquet出力")
 
 
 def main():
