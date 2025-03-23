@@ -8,9 +8,6 @@ import polars as pl
 
 from libs.settings import ENCODING_OPTIONS, NAME_PATTERNS
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 
