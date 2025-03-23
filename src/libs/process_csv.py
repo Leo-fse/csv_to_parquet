@@ -13,14 +13,17 @@ def get_new_data(input_dir: Path, use_streaming: bool = True):
     name_pattern = ["USER"]
 
     csv_lf_list = []
-    csv_files = list(Path(input_dir).glob("*.csv"))
+    csv_files = [
+        csv
+        for csv in list(Path(input_dir).glob("*.csv"))
+        if any(name in csv.name for name in name_pattern)
+    ]
     print(f"Processing {len(csv_files)} CSV files...")
     for csv_file in csv_files:
-        if any(name in csv_file.name for name in name_pattern):
-            print(f"処理中: {csv_file}")
-            lf = format_csv_data(csv_file)
-            if lf is not None:
-                csv_lf_list.append(lf)
+        print(f"処理中: {csv_file}")
+        lf = format_csv_data(csv_file)
+        if lf is not None:
+            csv_lf_list.append(lf)
     csv_lf = pl.concat(csv_lf_list)
 
     zip_files = list(Path(input_dir).glob("*.zip"))
@@ -32,22 +35,31 @@ def get_new_data(input_dir: Path, use_streaming: bool = True):
             csv_files = [name for name in zip_ref.namelist() if name.endswith(".csv")]
             print(f"Extracting {len(csv_files)} csv files from {zip_file}")
             for zip_info in zip_ref.infolist():
-                if zip_info.filename.endswith(".csv"):
+                if zip_info.filename.endswith(".csv") and any(
+                    name in zip_info.filename for name in name_pattern
+                ):
                     print(f"Extracting {zip_info.filename}...")
                     with tempfile.TemporaryDirectory() as tmp_dir:
                         # extract() の戻り値で正確なパスを得る
                         extracted_file_path = zip_ref.extract(zip_info, tmp_dir)
                         lf_zip = format_csv_data(Path(extracted_file_path))
                         if lf_zip is not None:
-                            zipped_csv_lf_list.append(lf_zip.collect())
+                            zipped_csv_lf_list.append(
+                                lf_zip.collect(engine="streaming")
+                            )
 
     print(
         f"処理完了: {len(csv_lf_list)} CSV files, {len(zipped_csv_lf_list)} ZIP files"
     )
 
-    zipped_csv_lf = pl.concat(zipped_csv_lf_list).lazy()
     csv_lf = pl.concat(csv_lf_list)
-    all_lf = pl.concat([csv_lf, zipped_csv_lf])
+
+    if zipped_csv_lf_list:
+        zipped_csv_lf = pl.concat(zipped_csv_lf_list).lazy()
+        all_lf = pl.concat([csv_lf, zipped_csv_lf])
+    else:
+        all_lf = csv_lf
+
     lf_deduped = process_df(all_lf)
 
     if use_streaming:
@@ -68,7 +80,6 @@ def process_df(lf, is_overwrite=True):
     # 重複しているデータを削除する
     # is_overwrite = True : created_atの新しい方を残す
     # is_overwrite = False: created_atの古い方を残す
-    lf = lf.sort(by=["Time", "Item", "created_at"])
     if is_overwrite:
         lf_deduped = lf.unique(subset=["Time", "Item"], keep="first")
     else:
@@ -82,46 +93,27 @@ def process_df(lf, is_overwrite=True):
         pl.col("Time").dt.month().alias("month"),
     )
 
-    return lf_deduped.sort("Time", "Item")
+    return lf_deduped.sort(by=["Time", "Item", "created_at"])
 
 
 def format_csv_data(fp):
-    encoding = "utf8"
-    print(f"Reading {fp}...")
-
-    # ヘッダー情報の取得
-    headers = []
+    encodings = ["utf8", "shift-jis", "cp932"]
     # ヘッダー行の読み込み（エンコーディングを試行）
-    try:
-        with open(fp, "r", encoding=encoding) as f:
-            headers1 = f.readline().strip().split(",")
-            headers2 = f.readline().strip().split(",")
-            headers3 = f.readline().strip().split(",")
-    except UnicodeDecodeError:
-        # shift-jisを試す
-        encoding = "shift-jis"
-
+    for encoding in encodings:
         try:
             with open(fp, "r", encoding=encoding) as f:
                 headers1 = f.readline().strip().split(",")
                 headers2 = f.readline().strip().split(",")
                 headers3 = f.readline().strip().split(",")
+            break
         except UnicodeDecodeError:
-            # cp932を試す
-            encoding = "cp932"
-            try:
-                with open(fp, "r", encoding=encoding) as f:
-                    headers1 = f.readline().strip().split(",")
-                    headers2 = f.readline().strip().split(",")
-                    headers3 = f.readline().strip().split(",")
-            except UnicodeDecodeError:
-                print(f"エンコーディングの判定に失敗しました: {fp}")
-                return None
+            continue
+    else:  # 全てのエンコーディングでエラーが発生した場合
+        print(f"エンコーディングの判定に失敗しました: {fp}")
+        return None
 
     # 1列目は日時カラムなので、ヘッダーを"Time"に変更
-    headers1[0] = ""
-    headers2[0] = "Time"
-    headers3[0] = ""
+    headers1[0], headers2[0], headers3[0] = "", "Time", ""
 
     # 重複のないヘッダーを作成
     headers = create_unique_headers(headers1, headers2, headers3)
